@@ -9,7 +9,7 @@ using Random = UnityEngine.Random;
 public class snakegame : MonoBehaviour
 {
     [Header("Settings")]
-    [Range(.1f,1)]
+    [Range(.1f,.5f)]
     public float frameDuration = 1;
     public int gridSize = 100;
 
