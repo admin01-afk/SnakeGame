@@ -60,7 +60,6 @@ public class snakegame : MonoBehaviour
             if (Lastdir != Direction.Left) {dir = Direction.Right;
             }
             else { dir = Direction.Down; }
-                
         }
     }
 
