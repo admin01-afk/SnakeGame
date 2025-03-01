@@ -20,6 +20,7 @@ public class snakegame : MonoBehaviour
     Direction dir;
     Direction Lastdir;
     //Sound
+    AudioSource audioSource;
     AudioClip gameOverClip;
     float gameOverClipTime = 1;
     AudioClip foodClip;
@@ -31,9 +32,10 @@ public class snakegame : MonoBehaviour
         Left,Right,Up,Down
     }
 
-    void Start()
+    private void Awake()
     {
         //initialize
+        audioSource = gameObject.AddComponent<AudioSource>();
         gameOverClip = Resources.Load<AudioClip>("gameOver");
         foodClip = Resources.Load<AudioClip>("food");
         gameStartClip = Resources.Load<AudioClip>("gameStart");
@@ -41,48 +43,48 @@ public class snakegame : MonoBehaviour
         foodClipTime = foodClip.length;
         Lastdir = dir;
         snake = new Vector2Int[] { new Vector2Int(gridSize / 2, gridSize / 2) };
-        boxSize = 2 /(float)gridSize;
-
-        PlayAudio(gameStartClip);
+        boxSize = 2f /(float)gridSize;
         GenerateGrid();
         RandomizeFood(sound:false);
+    }
+
+    void Start()
+    {
+        PlayAudio(gameStartClip);
         GameLoop();
     }
 
     void Update()
     {
-        //TO-DO if snake size is 1 no need to restrict opposite movement
-        if (Input.GetKey(KeyCode.W)) {
-            if (Lastdir != Direction.Down) {dir = Direction.Up;
-            }
-            else { dir = Direction.Left; }
-                
-        }else if (Input.GetKey(KeyCode.A)) {
-            if (Lastdir != Direction.Right) {dir = Direction.Left;
-            }
-            else { dir = Direction.Up; }
-                
-        }else if (Input.GetKey(KeyCode.S)) {
-            if (Lastdir != Direction.Up) {dir = Direction.Down;
-            }
-            else { dir = Direction.Right; }
-                
-        }else if (Input.GetKey(KeyCode.D)) {
-            if (Lastdir != Direction.Left) {dir = Direction.Right;
-            }
-            else { dir = Direction.Down; }
+        if (snake.Length > 1) {
+            if (Input.GetKey(KeyCode.W)) {
+                if (Lastdir != Direction.Down){dir = Direction.Up;}else { dir = Direction.Left; }}
+            else if (Input.GetKey(KeyCode.A)) {
+                if (Lastdir != Direction.Right){dir = Direction.Left;}else { dir = Direction.Up; }}
+            else if (Input.GetKey(KeyCode.S)) {
+                if (Lastdir != Direction.Up){dir = Direction.Down;}else { dir = Direction.Right; }}
+            else if (Input.GetKey(KeyCode.D)) {
+                if (Lastdir != Direction.Left) {dir = Direction.Right;}else { dir = Direction.Down; }}
+        }
+        else {
+            // No restriction for single size snake.
+            if (Input.GetKey(KeyCode.W)) dir = Direction.Up;
+            else if (Input.GetKey(KeyCode.A)) dir = Direction.Left;
+            else if (Input.GetKey(KeyCode.S)) dir = Direction.Down;
+            else if (Input.GetKey(KeyCode.D)) dir = Direction.Right;
         }
     }
 
     public void GameLoop()
     {
         if (snake[0] == food) {
+            StopAllCoroutines();
+            RandomizeFood();
             Vector2Int[] newSnake = new Vector2Int[snake.Length + 1];
             for (int i = 0; i < snake.Length; i++) {
                 newSnake[i + 1] = snake[i];
             }
             snake = newSnake;
-            RandomizeFood();
         }
         else {
             for (int i = snake.Length - 2; i >= 0; i--) {
@@ -122,18 +124,18 @@ public class snakegame : MonoBehaviour
                     break;
             }
         }
+
         // GameOver Check
         bool borderCollision = (snake[0].x < 0 || snake[0].x > gridSize - 1 || snake[0].y < 0 || snake[0].y > gridSize - 1);
         bool selfCollision = false;
-
         for (int i = 1; i < snake.Length; i++) {
             if (snake[0] == snake[i]) selfCollision = true;
         }
-
         if (borderCollision || selfCollision) {
             GameOver();
             return;
         }
+
         Draw();
         Lastdir = dir;
         StartCoroutine(RunFrame(frameDuration));
@@ -163,7 +165,7 @@ public class snakegame : MonoBehaviour
         MeshRenderer food_mr = boxes[Vector2toIndex(food)].GetComponent<MeshRenderer>();
         if (anim) {
             food_mr.material.color = Color.white;
-            StartCoroutine(ChangeColorOverTime(food_mr, Color.red, foodClipTime));
+            StartCoroutine(ChangeColorOverTime(food_mr, Color.red, foodClipTime*4/5));
         }
     }
 
@@ -188,23 +190,18 @@ public class snakegame : MonoBehaviour
         for (int i = 0; i < snake.Length; i++) {
             if (i == 0) {
                 MeshRenderer head_mr = boxes[Vector2toIndex(snake[0])].GetComponent<MeshRenderer>();
-                StartCoroutine(ChangeColorOverTime(head_mr, Color.green, frameDuration/2));
+                //StartCoroutine(ChangeColorOverTime(head_mr, Color.green, frameDuration/2));
+                head_mr.material.color = HeadColor;
+                head_mr.material.EnableKeyword("_EMISSION");
+                head_mr.material.SetColor("_EmissionColor", HeadColor);
                 continue;
             }
             MeshRenderer snake_mr = boxes[Vector2toIndex(snake[i])].GetComponent<MeshRenderer>();
             //StartCoroutine(ChangeColorOverTime(snake_mr, Color.green, (frameDuration*2/3) / (snake.Length-i)));
-
             snake_mr.material.color = Color.green;
             snake_mr.material.EnableKeyword("_EMISSION");
             snake_mr.material.SetColor("_EmissionColor", Color.green);
         }
-
-        /*
-        head_mr.material.color = Color.green;
-        head_mr.material.EnableKeyword("_EMISSION");
-        head_mr.material.SetColor("_EmissionColor", Color.green);
-        */
-
     }
 
     void GenerateGrid()
@@ -215,7 +212,8 @@ public class snakegame : MonoBehaviour
             for (int y = 0; y < gridSize; y++) {
                 int index = (x * gridSize) + y;
                 Vector3 position = new Vector3((x * boxSize) - (((float)gridSize / 2) * boxSize), (y * boxSize) - (((float)gridSize / 2) * boxSize), 0);
-                GameObject box = CreateSquare(position);
+                GameObject box = CreateSquare(position,boxSize);
+                box.transform.parent = grid.transform;
                 boxes[index] = box;
             }
         }
@@ -227,16 +225,16 @@ public class snakegame : MonoBehaviour
     }
     public IEnumerator RunFrame(float fps = 0.14f)
     {
-        yield return new WaitForSecondsRealtime(fps);
+        yield return new WaitForSeconds(fps);
         GameLoop();
     }
 
     void GameOver()
     {
-        ScreenFade(gameOverClipTime);
-        PlayAudio(gameOverClip);
-        Debug.Log("Score: " + snake.Length);
         RandomizeFood(false,false);
+        audioSource.Stop();
+        ScreenFade(gameOverClipTime*2/3);
+        PlayAudio(gameOverClip);
         snake = new Vector2Int[] { new Vector2Int(gridSize/2,gridSize/2)};
         StartCoroutine(RunFrame(gameOverClipTime));
     }
@@ -299,13 +297,12 @@ public class snakegame : MonoBehaviour
     {
         for (int i = 0; i < boxes.Length; i++) {
             MeshRenderer box_mr = boxes[i].GetComponent<MeshRenderer>();
-            StartCoroutine(ChangeColorOverTime(box_mr,Color.black,duration));
+            StartCoroutine(ChangeColorOverTime(box_mr, Color.black, duration));
         }
     }
 
     public void PlayAudio(AudioClip clip)
     {
-        AudioSource audioSource = gameObject.AddComponent<AudioSource>();
         audioSource.PlayOneShot(clip);
     }
 }
