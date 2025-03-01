@@ -13,15 +13,18 @@ public class snakegame : MonoBehaviour
     public float frameDuration = 1;
     public int gridSize = 100;
 
-    [Header("Sprite")]
-    public Sprite boxSprite;
-
     GameObject[] boxes;
     float boxSize;
     Vector2Int[] snake;
     Vector2Int food;
     Direction dir;
     Direction Lastdir;
+    //Sound
+    AudioClip gameOverClip;
+    float gameOverClipTime = 1;
+    AudioClip foodClip;
+    float foodClipTime = 1;
+    AudioClip gameStartClip;
 
     public enum Direction
     {
@@ -30,17 +33,25 @@ public class snakegame : MonoBehaviour
 
     void Start()
     {
+        //initialize
+        gameOverClip = Resources.Load<AudioClip>("gameOver");
+        foodClip = Resources.Load<AudioClip>("food");
+        gameStartClip = Resources.Load<AudioClip>("gameStart");
+        gameOverClipTime = gameOverClip.length;
+        foodClipTime = foodClip.length;
         Lastdir = dir;
         snake = new Vector2Int[] { new Vector2Int(gridSize / 2, gridSize / 2) };
         boxSize = 2 /(float)gridSize;
+
+        PlayAudio(gameStartClip);
         GenerateGrid();
-        Draw();
-        RandomizeFood();
+        RandomizeFood(sound:false);
         GameLoop();
     }
 
     void Update()
     {
+        //TO-DO if snake size is 1 no need to restrict opposite movement
         if (Input.GetKey(KeyCode.W)) {
             if (Lastdir != Direction.Down) {dir = Direction.Up;
             }
@@ -121,14 +132,17 @@ public class snakegame : MonoBehaviour
 
         if (borderCollision || selfCollision) {
             GameOver();
+            return;
         }
         Draw();
         Lastdir = dir;
         StartCoroutine(RunFrame(frameDuration));
     }
 
-    private void RandomizeFood()
+    private void RandomizeFood(bool sound = true)
     {
+        if(sound) PlayAudio(foodClip);
+        
         HashSet<Vector2Int> occupiedPositions = new HashSet<Vector2Int>(snake);
         List<Vector2Int> availablePositions = new List<Vector2Int>();
 
@@ -146,6 +160,9 @@ public class snakegame : MonoBehaviour
         }
 
         food = availablePositions[Random.Range(0, availablePositions.Count)];
+        MeshRenderer food_mr = boxes[Vector2toIndex(food)].GetComponent<MeshRenderer>();
+        food_mr.material.color = Color.white; 
+        StartCoroutine(ChangeColorOverTime(food_mr,Color.red, foodClipTime));
     }
 
     void Draw()
@@ -153,18 +170,38 @@ public class snakegame : MonoBehaviour
         // clear grid
         for (int i = 0; i < boxes.Length; i++) {
 
-            SpriteRenderer sr = boxes[i].GetComponent<SpriteRenderer>();
-            sr.color = Color.black;
+            MeshRenderer box_mr = boxes[i].GetComponent<MeshRenderer>();
+            box_mr.material.color = Color.black;
+            box_mr.material.SetColor("_EmissionColor", Color.black);
         }
 
         // render food
-        boxes[Vector2toIndex(food)].GetComponent<SpriteRenderer>().color = Color.red;
+        MeshRenderer food_mr = boxes[Vector2toIndex(food)].GetComponent<MeshRenderer>();
+        food_mr.material.color = Color.red;
+        food_mr.material.EnableKeyword("_EMISSION");
+        food_mr.material.SetColor("_EmissionColor", Color.red);
 
         // render snake
+        Color HeadColor = new Color(0, .9f, 0);
         for (int i = 0; i < snake.Length; i++) {
-            boxes[Vector2toIndex(snake[i])].GetComponent<SpriteRenderer>().color = new Color(0, .9f, 0);
+            if (i == 0) {
+                MeshRenderer head_mr = boxes[Vector2toIndex(snake[0])].GetComponent<MeshRenderer>();
+                StartCoroutine(ChangeColorOverTime(head_mr, Color.green, frameDuration/2));
+                continue;
+            }
+            MeshRenderer snake_mr = boxes[Vector2toIndex(snake[i])].GetComponent<MeshRenderer>();
+            //StartCoroutine(ChangeColorOverTime(snake_mr, Color.green, (frameDuration*2/3) / (snake.Length-i)));
+
+            snake_mr.material.color = Color.green;
+            snake_mr.material.EnableKeyword("_EMISSION");
+            snake_mr.material.SetColor("_EmissionColor", Color.green);
         }
-        boxes[Vector2toIndex(snake[0])].GetComponent<SpriteRenderer>().color = Color.green;
+
+        /*
+        head_mr.material.color = Color.green;
+        head_mr.material.EnableKeyword("_EMISSION");
+        head_mr.material.SetColor("_EmissionColor", Color.green);
+        */
 
     }
 
@@ -174,16 +211,10 @@ public class snakegame : MonoBehaviour
         GameObject grid = new GameObject("Grid");
         for (int x = 0; x < gridSize; x++) {
             for (int y = 0; y < gridSize; y++) {
-                //GameObject box = Instantiate(BoxPrefab,new Vector3((x * boxSize) - (((float)gridSize/2) * boxSize) + boxSize/2,(y*boxSize) - (((float)gridSize/2)*boxSize)  + boxSize/2, 0),Quaternion.identity, grid.transform);
                 int index = (x * gridSize) + y;
-                GameObject box = new GameObject("Box: " + index);
-                box.AddComponent<SpriteRenderer>().sprite = boxSprite;
-                box.transform.position = new Vector3((x * boxSize) - (((float)gridSize / 2) * boxSize), (y * boxSize) - (((float)gridSize / 2) * boxSize), 0);
-                box.transform.parent = grid.transform;
-                box.transform.localScale = new Vector3(boxSize,boxSize,1);
-
+                Vector3 position = new Vector3((x * boxSize) - (((float)gridSize / 2) * boxSize), (y * boxSize) - (((float)gridSize / 2) * boxSize), 0);
+                GameObject box = CreateSquare(position);
                 boxes[index] = box;
-                box.name = "Box: " + index;
             }
         }
     }
@@ -192,7 +223,7 @@ public class snakegame : MonoBehaviour
     {
         return (vector2.x * gridSize) + vector2.y;
     }
-    public IEnumerator RunFrame(float fps)
+    public IEnumerator RunFrame(float fps = 0.14f)
     {
         yield return new WaitForSecondsRealtime(fps);
         GameLoop();
@@ -200,62 +231,83 @@ public class snakegame : MonoBehaviour
 
     void GameOver()
     {
+        PlayAudio(gameOverClip);
         Debug.Log("Score: " + snake.Length);
-        RandomizeFood();
+        RandomizeFood(false);
         snake = new Vector2Int[] { new Vector2Int(gridSize/2,gridSize/2)};
+        StartCoroutine(RunFrame(gameOverClipTime));
     }
 
-    public void setSprite(Sprite sprite)
+    public static GameObject CreateSquare(Vector3 position, float size = 0.08f, Material material = null)
     {
-        boxSprite = sprite;
+        GameObject square = new GameObject("Square", typeof(MeshFilter), typeof(MeshRenderer));
+        square.transform.position = position;
+
+        Mesh mesh = new Mesh();
+        Vector3[] vertices = {
+        new Vector3(0, 0, 0),  // Bottom-left
+        new Vector3(size, 0, 0),  // Bottom-right
+        new Vector3(0, size, 0),  // Top-left
+        new Vector3(size, size, 0)  // Top-right
+        };
+        int[] triangles = { 0, 2, 1, 1, 2, 3 };
+
+        mesh.vertices = vertices;
+        mesh.triangles = triangles;
+        mesh.RecalculateNormals();
+
+        square.GetComponent<MeshFilter>().mesh = mesh;
+
+        MeshRenderer renderer = square.GetComponent<MeshRenderer>();
+
+        if (material != null) {
+            renderer.material = material; // Use the provided material
+        }
+        else {
+            renderer.material = new Material(Shader.Find("Standard")); // Default material
+            renderer.material.color = Color.white; // Default color
+        }
+
+        return square;
+    }
+
+    public static IEnumerator ChangeColorOverTime(MeshRenderer renderer, Color targetColor, float duration)
+    {
+        if (renderer == null) yield break;
+
+        Material material = renderer.material;
+        Color startColor = material.color;
+        float elapsedTime = 0f;
+
+        while (elapsedTime < duration) {
+            elapsedTime += Time.deltaTime;
+            float t = elapsedTime / duration;
+
+            material.color = Color.Lerp(startColor, targetColor, t);
+            material.EnableKeyword("_EMISSION");
+            material.SetColor("_EmissionColor", Color.Lerp(startColor, targetColor, t));
+
+            yield return null;
+        }
+
+        material.color = targetColor; // Ensure final color is exact
+    }
+
+    public void PlayAudio(AudioClip clip)
+    {
+        AudioSource audioSource = gameObject.AddComponent<AudioSource>();
+        audioSource.PlayOneShot(clip);
     }
 }
 
 #if UNITY_EDITOR
 [CustomEditor(typeof(snakegame))]
 public class ScriptEditor : Editor {
-    public static void LoadSpriteFromPackage(snakegame script)
-    {
-        string assetPath = "Packages/com.unity.2d.sprite/Editor/ObjectMenuCreation/DefaultAssets/Textures/Square.png";
-
-        Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
-
-        if (texture != null) {
-            // Convert non-readable texture to a readable one using RenderTexture
-            RenderTexture rt = new RenderTexture(texture.width, texture.height, 0, RenderTextureFormat.Default, RenderTextureReadWrite.Linear);
-            Graphics.Blit(texture, rt); // Copy the texture to the RenderTexture
-            RenderTexture.active = rt;
-
-            // Create a new readable Texture2D
-            Texture2D readableTexture = new Texture2D(texture.width, texture.height, TextureFormat.RGBA32, false);
-            readableTexture.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
-            readableTexture.Apply();
-
-            RenderTexture.active = null;
-            rt.Release(); // Cleanup RenderTexture
-
-            // Create a sprite from the new readable texture
-            float pixelsPerUnit = 255f;
-            Sprite sprite = Sprite.Create(readableTexture, new Rect(0, 0, readableTexture.width, readableTexture.height), Vector2.zero, pixelsPerUnit);
-
-            script.setSprite(sprite);
-        }
-        else {
-            Debug.LogError("Failed to load sprite from package! Check the asset path.");
-        }
-    }
-
     public override void OnInspectorGUI()
     {
         DrawDefaultInspector();
 
         snakegame script = (snakegame)target;
-
-        if (script.boxSprite == null) {
-            if (GUILayout.Button("LoadSpriteFromPackage")) {
-                LoadSpriteFromPackage(script);
-            }
-        }
     }
 }
 #endif
