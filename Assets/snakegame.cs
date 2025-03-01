@@ -13,122 +13,111 @@ public class snakegame : MonoBehaviour
     public float frameDuration = 1;
     public int gridSize = 100;
 
-    [Header("Sprite")]
-    public Sprite boxSprite;
-
     GameObject[] boxes;
     float boxSize;
     Vector2Int[] snake;
     Vector2Int food;
     Direction dir;
     Direction Lastdir;
+    //Sound
+    AudioSource audioSource;
+    AudioClip gameOverClip;
+    float gameOverClipTime = 1;
+    AudioClip foodClip;
+    float foodClipTime = 1;
+    AudioClip gameStartClip;
 
     public enum Direction
     {
         Left,Right,Up,Down
     }
 
-    void Start()
+    private void Awake()
     {
+        //initialize
+        audioSource = gameObject.AddComponent<AudioSource>();
+        gameOverClip = Resources.Load<AudioClip>("gameOver");
+        foodClip = Resources.Load<AudioClip>("food");
+        gameStartClip = Resources.Load<AudioClip>("gameStart");
+        gameOverClipTime = gameOverClip.length;
+        foodClipTime = foodClip.length;
         Lastdir = dir;
         snake = new Vector2Int[] { new Vector2Int(gridSize / 2, gridSize / 2) };
-        boxSize = 2 /(float)gridSize;
+        boxSize = 2f /(float)gridSize;
         GenerateGrid();
-        Draw();
-        RandomizeFood();
+        RandomizeFood(sound:false);
+    }
+
+    void Start()
+    {
+        PlayAudio(gameStartClip);
         GameLoop();
     }
 
     void Update()
     {
-        if (Input.GetKey(KeyCode.W)) {
-            if (Lastdir != Direction.Down) {dir = Direction.Up;
-            }
-            else { dir = Direction.Left; }
-                
-        }else if (Input.GetKey(KeyCode.A)) {
-            if (Lastdir != Direction.Right) {dir = Direction.Left;
-            }
-            else { dir = Direction.Up; }
-                
-        }else if (Input.GetKey(KeyCode.S)) {
-            if (Lastdir != Direction.Up) {dir = Direction.Down;
-            }
-            else { dir = Direction.Right; }
-                
-        }else if (Input.GetKey(KeyCode.D)) {
-            if (Lastdir != Direction.Left) {dir = Direction.Right;
-            }
-            else { dir = Direction.Down; }
+        if (snake.Length > 1) {
+            if (Input.GetKey(KeyCode.W)) {
+                if (Lastdir != Direction.Down){dir = Direction.Up;}else { dir = Direction.Left; }}
+            else if (Input.GetKey(KeyCode.A)) {
+                if (Lastdir != Direction.Right){dir = Direction.Left;}else { dir = Direction.Up; }}
+            else if (Input.GetKey(KeyCode.S)) {
+                if (Lastdir != Direction.Up){dir = Direction.Down;}else { dir = Direction.Right; }}
+            else if (Input.GetKey(KeyCode.D)) {
+                if (Lastdir != Direction.Left) {dir = Direction.Right;}else { dir = Direction.Down; }}
+        }
+        else {
+            // No restriction for single size snake.
+            if (Input.GetKey(KeyCode.W)) dir = Direction.Up;
+            else if (Input.GetKey(KeyCode.A)) dir = Direction.Left;
+            else if (Input.GetKey(KeyCode.S)) dir = Direction.Down;
+            else if (Input.GetKey(KeyCode.D)) dir = Direction.Right;
         }
     }
 
     public void GameLoop()
     {
-        if (snake[0] == food) {
-            Vector2Int[] newSnake = new Vector2Int[snake.Length + 1];
-            for (int i = 0; i < snake.Length; i++) {
-                newSnake[i + 1] = snake[i];
-            }
-            snake = newSnake;
-            RandomizeFood();
-        }
-        else {
-            for (int i = snake.Length - 2; i >= 0; i--) {
-                snake[i + 1] = snake[i];
-            }
+        // 1. Calculate next head position based on direction
+        Vector2Int nextHead = snake[0];
+        switch (dir) {
+            case Direction.Left: nextHead.x--; break;
+            case Direction.Right: nextHead.x++; break;
+            case Direction.Up: nextHead.y++; break;
+            case Direction.Down: nextHead.y--; break;
         }
 
-        if(snake.Length == 1) {
-            switch (dir) {
-                case Direction.Left:
-                    snake[0].x--;
-                    break;
-                case Direction.Right:
-                    snake[0].x++;
-                    break;
-                case Direction.Up:
-                    snake[0].y++;
-                    break;
-                case Direction.Down:
-                    snake[0].y--;
-                    break;
-            }
-        }
-        else {
-            switch (dir) {
-                case Direction.Left:
-                    snake[0] = new Vector2Int(snake[1].x-1, snake[1].y);
-                    break;
-                case Direction.Right:
-                    snake[0] = new Vector2Int(snake[1].x + 1, snake[1].y);
-                    break;
-                case Direction.Up:
-                    snake[0] = new Vector2Int(snake[1].x, snake[1].y + 1);
-                    break;
-                case Direction.Down:
-                    snake[0] = new Vector2Int(snake[1].x, snake[1].y - 1);
-                    break;
-            }
-        }
-        // GameOver Check
-        bool borderCollision = (snake[0].x < 0 || snake[0].x > gridSize - 1 || snake[0].y < 0 || snake[0].y > gridSize - 1);
-        bool selfCollision = false;
-
-        for (int i = 1; i < snake.Length; i++) {
-            if (snake[0] == snake[i]) selfCollision = true;
-        }
+        // 2. Check for collisions (walls or self)
+        bool borderCollision = (nextHead.x < 0 || nextHead.x >= gridSize || nextHead.y < 0 || nextHead.y >= gridSize);
+        bool selfCollision = new HashSet<Vector2Int>(snake).Contains(nextHead);
 
         if (borderCollision || selfCollision) {
             GameOver();
+            return;
         }
+
+        // 3. Handle food consumption
+        bool grew = (nextHead == food);
+        if (grew) {
+            StopAllCoroutines();
+            RandomizeFood();
+            PlayAudio(foodClip);
+        }
+
+        // 4. Move snake: Add new head, remove tail if not growing
+        List<Vector2Int> newSnake = new List<Vector2Int>(snake);
+        newSnake.Insert(0, nextHead); // Add new head
+        if (!grew) newSnake.RemoveAt(newSnake.Count - 1); // Remove tail if no growth
+        snake = newSnake.ToArray();
+
         Draw();
         Lastdir = dir;
         StartCoroutine(RunFrame(frameDuration));
     }
 
-    private void RandomizeFood()
+    private void RandomizeFood(bool sound = true,bool anim = true)
     {
+        if(sound) PlayAudio(foodClip);
+        
         HashSet<Vector2Int> occupiedPositions = new HashSet<Vector2Int>(snake);
         List<Vector2Int> availablePositions = new List<Vector2Int>();
 
@@ -146,6 +135,11 @@ public class snakegame : MonoBehaviour
         }
 
         food = availablePositions[Random.Range(0, availablePositions.Count)];
+        MeshRenderer food_mr = boxes[Vector2toIndex(food)].GetComponent<MeshRenderer>();
+        if (anim) {
+            food_mr.material.color = Color.white;
+            StartCoroutine(ChangeColorOverTime(food_mr, Color.red, foodClipTime*4/5));
+        }
     }
 
     void Draw()
@@ -153,19 +147,34 @@ public class snakegame : MonoBehaviour
         // clear grid
         for (int i = 0; i < boxes.Length; i++) {
 
-            SpriteRenderer sr = boxes[i].GetComponent<SpriteRenderer>();
-            sr.color = Color.black;
+            MeshRenderer box_mr = boxes[i].GetComponent<MeshRenderer>();
+            box_mr.material.color = Color.black;
+            box_mr.material.SetColor("_EmissionColor", Color.black);
         }
 
         // render food
-        boxes[Vector2toIndex(food)].GetComponent<SpriteRenderer>().color = Color.red;
+        MeshRenderer food_mr = boxes[Vector2toIndex(food)].GetComponent<MeshRenderer>();
+        food_mr.material.color = Color.red;
+        food_mr.material.EnableKeyword("_EMISSION");
+        food_mr.material.SetColor("_EmissionColor", Color.red);
 
         // render snake
+        Color HeadColor = new Color(0, .9f, 0);
         for (int i = 0; i < snake.Length; i++) {
-            boxes[Vector2toIndex(snake[i])].GetComponent<SpriteRenderer>().color = new Color(0, .9f, 0);
+            if (i == 0) {
+                MeshRenderer head_mr = boxes[Vector2toIndex(snake[0])].GetComponent<MeshRenderer>();
+                //StartCoroutine(ChangeColorOverTime(head_mr, Color.green, frameDuration/2));
+                head_mr.material.color = HeadColor;
+                head_mr.material.EnableKeyword("_EMISSION");
+                head_mr.material.SetColor("_EmissionColor", HeadColor);
+                continue;
+            }
+            MeshRenderer snake_mr = boxes[Vector2toIndex(snake[i])].GetComponent<MeshRenderer>();
+            //StartCoroutine(ChangeColorOverTime(snake_mr, Color.green, (frameDuration*2/3) / (snake.Length-i)));
+            snake_mr.material.color = Color.green;
+            snake_mr.material.EnableKeyword("_EMISSION");
+            snake_mr.material.SetColor("_EmissionColor", Color.green);
         }
-        boxes[Vector2toIndex(snake[0])].GetComponent<SpriteRenderer>().color = Color.green;
-
     }
 
     void GenerateGrid()
@@ -174,16 +183,11 @@ public class snakegame : MonoBehaviour
         GameObject grid = new GameObject("Grid");
         for (int x = 0; x < gridSize; x++) {
             for (int y = 0; y < gridSize; y++) {
-                //GameObject box = Instantiate(BoxPrefab,new Vector3((x * boxSize) - (((float)gridSize/2) * boxSize) + boxSize/2,(y*boxSize) - (((float)gridSize/2)*boxSize)  + boxSize/2, 0),Quaternion.identity, grid.transform);
                 int index = (x * gridSize) + y;
-                GameObject box = new GameObject("Box: " + index);
-                box.AddComponent<SpriteRenderer>().sprite = boxSprite;
-                box.transform.position = new Vector3((x * boxSize) - (((float)gridSize / 2) * boxSize), (y * boxSize) - (((float)gridSize / 2) * boxSize), 0);
+                Vector3 position = new Vector3((x * boxSize) - (((float)gridSize / 2) * boxSize), (y * boxSize) - (((float)gridSize / 2) * boxSize), 0);
+                GameObject box = CreateSquare(position,boxSize);
                 box.transform.parent = grid.transform;
-                box.transform.localScale = new Vector3(boxSize,boxSize,1);
-
                 boxes[index] = box;
-                box.name = "Box: " + index;
             }
         }
     }
@@ -192,70 +196,98 @@ public class snakegame : MonoBehaviour
     {
         return (vector2.x * gridSize) + vector2.y;
     }
-    public IEnumerator RunFrame(float fps)
+    public IEnumerator RunFrame(float fps = 0.14f)
     {
-        yield return new WaitForSecondsRealtime(fps);
+        yield return new WaitForSeconds(fps);
         GameLoop();
     }
 
     void GameOver()
     {
-        Debug.Log("Score: " + snake.Length);
-        RandomizeFood();
+        RandomizeFood(false,false);
+        audioSource.Stop();
+        ScreenFade(gameOverClipTime*2/3);
+        PlayAudio(gameOverClip);
         snake = new Vector2Int[] { new Vector2Int(gridSize/2,gridSize/2)};
+        StartCoroutine(RunFrame(gameOverClipTime));
     }
 
-    public void setSprite(Sprite sprite)
+    public static GameObject CreateSquare(Vector3 position, float size = 0.08f, Material material = null)
     {
-        boxSprite = sprite;
+        GameObject square = new GameObject("Square", typeof(MeshFilter), typeof(MeshRenderer));
+        square.transform.position = position;
+
+        Mesh mesh = new Mesh();
+        Vector3[] vertices = {
+        new Vector3(0, 0, 0),  // Bottom-left
+        new Vector3(size, 0, 0),  // Bottom-right
+        new Vector3(0, size, 0),  // Top-left
+        new Vector3(size, size, 0)  // Top-right
+        };
+        int[] triangles = { 0, 2, 1, 1, 2, 3 };
+
+        mesh.vertices = vertices;
+        mesh.triangles = triangles;
+        mesh.RecalculateNormals();
+
+        square.GetComponent<MeshFilter>().mesh = mesh;
+
+        MeshRenderer renderer = square.GetComponent<MeshRenderer>();
+
+        if (material != null) {
+            renderer.material = material; // Use the provided material
+        }
+        else {
+            renderer.material = new Material(Shader.Find("Standard")); // Default material
+            renderer.material.color = Color.white; // Default color
+        }
+
+        return square;
+    }
+
+    public static IEnumerator ChangeColorOverTime(MeshRenderer renderer, Color targetColor, float duration)
+    {
+        if (renderer == null) yield break;
+
+        Material material = renderer.material;
+        Color startColor = material.color;
+        float elapsedTime = 0f;
+
+        while (elapsedTime < duration) {
+            elapsedTime += Time.deltaTime;
+            float t = elapsedTime / duration;
+
+            material.color = Color.Lerp(startColor, targetColor, t);
+            material.EnableKeyword("_EMISSION");
+            material.SetColor("_EmissionColor", Color.Lerp(startColor, targetColor, t));
+
+            yield return null;
+        }
+
+        material.color = targetColor; // Ensure final color is exact
+    }
+    public void ScreenFade(float duration)
+    {
+        for (int i = 0; i < boxes.Length; i++) {
+            MeshRenderer box_mr = boxes[i].GetComponent<MeshRenderer>();
+            StartCoroutine(ChangeColorOverTime(box_mr, Color.black, duration));
+        }
+    }
+
+    public void PlayAudio(AudioClip clip)
+    {
+        audioSource.PlayOneShot(clip);
     }
 }
 
 #if UNITY_EDITOR
 [CustomEditor(typeof(snakegame))]
 public class ScriptEditor : Editor {
-    public static void LoadSpriteFromPackage(snakegame script)
-    {
-        string assetPath = "Packages/com.unity.2d.sprite/Editor/ObjectMenuCreation/DefaultAssets/Textures/Square.png";
-
-        Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(assetPath);
-
-        if (texture != null) {
-            // Convert non-readable texture to a readable one using RenderTexture
-            RenderTexture rt = new RenderTexture(texture.width, texture.height, 0, RenderTextureFormat.Default, RenderTextureReadWrite.Linear);
-            Graphics.Blit(texture, rt); // Copy the texture to the RenderTexture
-            RenderTexture.active = rt;
-
-            // Create a new readable Texture2D
-            Texture2D readableTexture = new Texture2D(texture.width, texture.height, TextureFormat.RGBA32, false);
-            readableTexture.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0);
-            readableTexture.Apply();
-
-            RenderTexture.active = null;
-            rt.Release(); // Cleanup RenderTexture
-
-            // Create a sprite from the new readable texture
-            float pixelsPerUnit = 255f;
-            Sprite sprite = Sprite.Create(readableTexture, new Rect(0, 0, readableTexture.width, readableTexture.height), Vector2.zero, pixelsPerUnit);
-
-            script.setSprite(sprite);
-        }
-        else {
-            Debug.LogError("Failed to load sprite from package! Check the asset path.");
-        }
-    }
-
     public override void OnInspectorGUI()
     {
         DrawDefaultInspector();
 
         snakegame script = (snakegame)target;
-
-        if (script.boxSprite == null) {
-            if (GUILayout.Button("LoadSpriteFromPackage")) {
-                LoadSpriteFromPackage(script);
-            }
-        }
     }
 }
 #endif
