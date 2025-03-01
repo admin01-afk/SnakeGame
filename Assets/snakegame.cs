@@ -77,64 +77,37 @@ public class snakegame : MonoBehaviour
 
     public void GameLoop()
     {
-        if (snake[0] == food) {
-            StopAllCoroutines();
-            RandomizeFood();
-            Vector2Int[] newSnake = new Vector2Int[snake.Length + 1];
-            for (int i = 0; i < snake.Length; i++) {
-                newSnake[i + 1] = snake[i];
-            }
-            snake = newSnake;
-        }
-        else {
-            for (int i = snake.Length - 2; i >= 0; i--) {
-                snake[i + 1] = snake[i];
-            }
+        // 1. Calculate next head position based on direction
+        Vector2Int nextHead = snake[0];
+        switch (dir) {
+            case Direction.Left: nextHead.x--; break;
+            case Direction.Right: nextHead.x++; break;
+            case Direction.Up: nextHead.y++; break;
+            case Direction.Down: nextHead.y--; break;
         }
 
-        if(snake.Length == 1) {
-            switch (dir) {
-                case Direction.Left:
-                    snake[0].x--;
-                    break;
-                case Direction.Right:
-                    snake[0].x++;
-                    break;
-                case Direction.Up:
-                    snake[0].y++;
-                    break;
-                case Direction.Down:
-                    snake[0].y--;
-                    break;
-            }
-        }
-        else {
-            switch (dir) {
-                case Direction.Left:
-                    snake[0] = new Vector2Int(snake[1].x-1, snake[1].y);
-                    break;
-                case Direction.Right:
-                    snake[0] = new Vector2Int(snake[1].x + 1, snake[1].y);
-                    break;
-                case Direction.Up:
-                    snake[0] = new Vector2Int(snake[1].x, snake[1].y + 1);
-                    break;
-                case Direction.Down:
-                    snake[0] = new Vector2Int(snake[1].x, snake[1].y - 1);
-                    break;
-            }
-        }
+        // 2. Check for collisions (walls or self)
+        bool borderCollision = (nextHead.x < 0 || nextHead.x >= gridSize || nextHead.y < 0 || nextHead.y >= gridSize);
+        bool selfCollision = new HashSet<Vector2Int>(snake).Contains(nextHead);
 
-        // GameOver Check
-        bool borderCollision = (snake[0].x < 0 || snake[0].x > gridSize - 1 || snake[0].y < 0 || snake[0].y > gridSize - 1);
-        bool selfCollision = false;
-        for (int i = 1; i < snake.Length; i++) {
-            if (snake[0] == snake[i]) selfCollision = true;
-        }
         if (borderCollision || selfCollision) {
             GameOver();
             return;
         }
+
+        // 3. Handle food consumption
+        bool grew = (nextHead == food);
+        if (grew) {
+            StopAllCoroutines();
+            RandomizeFood();
+            PlayAudio(foodClip);
+        }
+
+        // 4. Move snake: Add new head, remove tail if not growing
+        List<Vector2Int> newSnake = new List<Vector2Int>(snake);
+        newSnake.Insert(0, nextHead); // Add new head
+        if (!grew) newSnake.RemoveAt(newSnake.Count - 1); // Remove tail if no growth
+        snake = newSnake.ToArray();
 
         Draw();
         Lastdir = dir;
