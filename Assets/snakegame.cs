@@ -139,7 +139,7 @@ public class snakegame : MonoBehaviour
         StartCoroutine(RunFrame(frameDuration));
     }
 
-    private void RandomizeFood(bool sound = true)
+    private void RandomizeFood(bool sound = true,bool anim = true)
     {
         if(sound) PlayAudio(foodClip);
         
@@ -161,8 +161,10 @@ public class snakegame : MonoBehaviour
 
         food = availablePositions[Random.Range(0, availablePositions.Count)];
         MeshRenderer food_mr = boxes[Vector2toIndex(food)].GetComponent<MeshRenderer>();
-        food_mr.material.color = Color.white; 
-        StartCoroutine(ChangeColorOverTime(food_mr,Color.red, foodClipTime));
+        if (anim) {
+            food_mr.material.color = Color.white;
+            StartCoroutine(ChangeColorOverTime(food_mr, Color.red, foodClipTime));
+        }
     }
 
     void Draw()
@@ -231,9 +233,10 @@ public class snakegame : MonoBehaviour
 
     void GameOver()
     {
+        ScreenFade(gameOverClipTime);
         PlayAudio(gameOverClip);
         Debug.Log("Score: " + snake.Length);
-        RandomizeFood(false);
+        RandomizeFood(false,false);
         snake = new Vector2Int[] { new Vector2Int(gridSize/2,gridSize/2)};
         StartCoroutine(RunFrame(gameOverClipTime));
     }
@@ -291,6 +294,13 @@ public class snakegame : MonoBehaviour
         }
 
         material.color = targetColor; // Ensure final color is exact
+    }
+    public void ScreenFade(float duration)
+    {
+        for (int i = 0; i < boxes.Length; i++) {
+            MeshRenderer box_mr = boxes[i].GetComponent<MeshRenderer>();
+            StartCoroutine(ChangeColorOverTime(box_mr,Color.black,duration));
+        }
     }
 
     public void PlayAudio(AudioClip clip)
